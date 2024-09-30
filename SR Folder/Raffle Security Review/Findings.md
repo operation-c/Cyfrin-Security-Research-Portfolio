@@ -286,7 +286,48 @@ Chainlink VRF allows for the output of the randomization to be mathatically safe
 
 
 
+### [H-3] `PuppyRaffle::selectWinner` overflow!!!
 
+**Description:** 
+
+**Impact:** 
+
+**Proof of Concept:**
+
+``` solidity
+            function test_overflow_fees() public {
+                // create users 
+                address[] memory players = new address[](4);
+                players[0] = address(payable(1));
+                players[1] = address(payable(2));
+                players[2] = address(payable(3));
+                players[3] = address(payable(4));
+        
+                // Players enter the raffle
+                puppyRaffle.enterRaffle{value: entranceFee * players.length}(players);
+        
+                uint256 totalAmountCollected = players.length * entranceFee; // 4000000000000000000
+                uint256 expectedFee = (totalAmountCollected * 20) / 100; // 800000000000000000
+                console.log("expected fee:     ", expectedFee); // 800000000000000000
+                console.log("contract balance: ", address(puppyRaffle).balance); // 20% of 4000000000000000000 is 800000000000000000 aka 0.8 eth
+        
+                uint64 totalFee64 = uint64(expectedFee); //800000000000000000 aka 8e17
+        
+               // max64: 18446744073709551615                 
+               // calc the headroom then adding 1 
+               // headroom = 17646744073709551615
+               // headroom + 1 = 17646744073709551616
+                uint64 overflowAmount = (type(uint64).max - totalFee64) + 1;  
+        
+                // 800000000000000000 + 17646744073709551616 = 18446744073709551616 -> 0
+                totalFee64 += overflowAmount;
+        
+                assertTrue(totalFee64 < overflowAmount, "Overflow!!!");
+            }
+
+```
+
+**Recommended Mitigation:** 
 
 
 

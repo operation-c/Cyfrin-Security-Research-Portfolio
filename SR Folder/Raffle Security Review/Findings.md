@@ -293,6 +293,7 @@ Chainlink VRF allows for the output of the randomization to be mathatically safe
 **Impact:** 
 
 **Proof of Concept:**
+<summary>1. PoC demonstrates how type casting totalFees can lead to overflow </summary>
 
 ``` solidity
             function test_overflow_fees() public {
@@ -322,10 +323,67 @@ Chainlink VRF allows for the output of the randomization to be mathatically safe
                 // 800000000000000000 + 17646744073709551616 = 18446744073709551616 -> 0
                 totalFee64 += overflowAmount;
         
-                assertTrue(totalFee64 < overflowAmount, "Overflow!!!");
+                assertTrue(totalFee64 < overflowAmount, "Overflow fails!");
             }
 
 ```
+
+<summary>2. This PoC demonstrates the ramifications of incorrect typecasting. In this case, the second group's winner will receive fewer rewards than the first group, even though the first group comprised only four accounts.</summary>
+
+```
+
+        Logs:
+          1st group winner fees:    800000000000000000
+          2nd group winner fees:    353255926290448384
+
+```
+
+
+``` solidity
+
+            function testOverflowWithHeadroom() public {
+                // first group of players 
+                address[] memory players = new address[](4);
+                for (uint256 i; i < players.length; i++) {
+                    players[i] = address(uint256(uint160(i))); 
+                }
+        
+                puppyRaffle.enterRaffle{value: entranceFee * players.length}(players);
+        
+                uint256 endTime = puppyRaffle.raffleStartTime() + puppyRaffle.raffleDuration();
+                vm.warp(endTime);
+                vm.roll(endTime + 1);
+        
+                puppyRaffle.selectWinner();
+        
+                uint256 initialFees = puppyRaffle.totalFees();
+                console.log("1st group winner fees:  %s", initialFees);      
+        
+                // second group
+                address[] memory player90 = new address[](90);
+                for (uint256 i; i < player90.length; i++) {
+                    player90[i] = address(uint256(uint160(i)));
+                }
+        
+                puppyRaffle.enterRaffle{value: entranceFee * player90.length}(player90);
+        
+                vm.warp(endTime + endTime);
+                vm.roll(endTime + 1);
+        
+        
+                puppyRaffle.selectWinner();
+                uint256 endingFees = puppyRaffle.totalFees();
+                console.log("2nd group winner fees: %s", endingFees);
+        
+                assertLe(endingFees, initialFees);
+        
+            }
+```
+
+
+
+
+
 
 **Recommended Mitigation:** 
 

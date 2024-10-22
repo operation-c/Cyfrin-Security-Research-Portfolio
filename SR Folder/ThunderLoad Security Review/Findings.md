@@ -63,13 +63,17 @@ However, the `deposit` function updates this rate without collecting any fees!
         assetToken.mint(msg.sender, mintAmount);
 
         // @audit- high: we shouldnt be updating the exchange rate here  
--      uint256 calculatedFee = getCalculatedFee(token, amount);
--      assetToken.updateExchangeRate(calculatedFee);
+    -   uint256 calculatedFee = getCalculatedFee(token, amount);
+    -   assetToken.updateExchangeRate(calculatedFee);
 
         token.safeTransferFrom(msg.sender, address(assetToken), amount);
     }
 
 ```
+
+
+
+
 
 
 ### [H-2] By calling a flashloan and then ThunderLoan::deposit instead of ThunderLoan::repay users can steal all funds from the protocol
@@ -168,15 +172,69 @@ contract DepositOverRepay is IFlashLoanReceiver {
 
 
 
+### [H-3] Mixing up variable location causes storage collisions in ThunderLoan::s_flashLoanFee and ThunderLoan::s_currentlyFlashLoaning
+
+**Description:** `ThunderLoan.sol` has two variables in the following order:
+
+``` solidity  
+
+        uint256 private s_feePrecision;
+        uint256 private s_flashLoanFee; // 0.3% ETH fee
+
+```
+
+However, the expected upgraded contract `ThunderLoanUpgraded.sol` has them in a different order.
+
+``` solidity 
+        uint256 private s_flashLoanFee; // 0.3% ETH fee
+        uint256 public constant FEE_PRECISION = 1e18;
+
+```
+
+Due to how Solidity storage works, after the upgrade, the `s_flashLoanFee` will have the value of `s_feePrecision`. You cannot adjust the positions of storage variables when working with upgradeable contracts.
+
+
+**Impact:** After upgrade, the `s_flashLoanFee` will have the value of `s_feePrecision`. This means that users who take out flash loans right after an upgrade will be charged the wrong fee. Additionally the `s_currentlyFlashLoaning` mapping will start on the wrong storage slot.
 
 
 
+**Proof of Code:**
+
+<summary>Proof of Code</summary>
+Add the following code to the `ThunderLoanTest.t.sol` file.
+
+``` solidity 
+
+    // You'll need to import `ThunderLoanUpgraded` as well
+    import { ThunderLoanUpgraded } from "../../src/upgradedProtocol/ThunderLoanUpgraded.sol";
+
+    function testUpgradeBreaks() public {
+            uint256 feeBeforeUpgrade = thunderLoan.getFee();
+            vm.startPrank(thunderLoan.owner());
+            ThunderLoanUpgraded upgraded = new ThunderLoanUpgraded();
+            thunderLoan.upgradeTo(address(upgraded));
+            uint256 feeAfterUpgrade = thunderLoan.getFee();
+
+            assert(feeBeforeUpgrade != feeAfterUpgrade);
+        }
+
+```
+
+You can also see the storage layout difference by running `forge inspect ThunderLoan storage` and `forge inspect ThunderLoanUpgraded storage`
 
 
+**Recommended Mitigation:** Do not switch the positions of the storage variables on upgrade, and leave a blank if you're going to replace a storage variable with a constant. In `ThunderLoanUpgraded.sol`:
 
 
+``` diff 
 
+-    uint256 private s_flashLoanFee; // 0.3% ETH fee
+-    uint256 public constant FEE_PRECISION = 1e18;
++    uint256 private s_blank;
++    uint256 private s_flashLoanFee;
++    uint256 public constant FEE_PRECISION = 1e18;
 
+```
 
 
 
@@ -323,17 +381,3 @@ contract MaliciousContract is IFlashLoanReceiver {
 
 </details>
 
-
-
-
-
-
-
-### [S-#] TITLE (Root + Impact)
-**Description**
-
-**Impact**
-
-**Proof of Concepts**
-
-**Recommended mitigation**

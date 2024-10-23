@@ -66,5 +66,6 @@
 
         vm.expectRevert(TokenFactory.TokenFactory__duplicateSymbol.selector);
         tokenFactory.deployToken("TEST", type(L1Token).creationCode);
+        vm.stopPrank();
     }
 ```
